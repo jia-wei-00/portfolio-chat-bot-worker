@@ -1,154 +1,190 @@
-# LLM Chat Application Template
+# portfolio-chat-bot-worker
 
-A simple, ready-to-deploy chat application template powered by Cloudflare Workers AI. This template provides a clean starting point for building AI chat applications with streaming responses.
+A Cloudflare Worker that powers the AI chat assistant on [jia-wei.site](https://jia-wei.site). Visitors can ask questions about Jia Wei's background, skills, projects, and experience, and receive answers grounded in his actual portfolio content.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/llm-chat-app-template)
+## How It Works
 
-<!-- dash-content-start -->
+1. **Seeding** — portfolio content (about, skills, projects, experience, education) is embedded with Gemini Embedding 2 and stored as 3072-dimensional vectors in a Supabase pgvector table.
+2. **Chat** — each user message is embedded, a cosine similarity search retrieves the most relevant content chunks from Supabase, and Gemini generates a grounded answer.
+3. **History** — conversation context is persisted in Cloudflare KV per session (1-hour TTL) so the AI remembers earlier turns in the same chat.
+4. **Agent** — built with LangChain's `createAgent` (LangGraph ReAct agent). The LLM decides when to call the `retrieve_portfolio` tool rather than always retrieving.
 
-## Demo
+## Tech Stack
 
-This template demonstrates how to build an AI-powered chat interface using Cloudflare Workers AI with streaming responses. It features:
+| Layer | Technology |
+|---|---|
+| Runtime | Cloudflare Workers (TypeScript) |
+| LLM | Gemini (`gemini-3.1-flash-lite`) via `@langchain/google-genai` |
+| Embeddings | Gemini Embedding 2 (3072 dims) |
+| Vector store | Supabase pgvector |
+| Agent framework | LangChain v1 + LangGraph (`createAgent`) |
+| Session history | Cloudflare KV |
+| Tracing | LangSmith (optional) |
 
-- Real-time streaming of AI responses using Server-Sent Events (SSE)
-- Easy customization of models and system prompts
-- Support for AI Gateway integration
-- Clean, responsive UI that works on mobile and desktop
+## Project Structure
 
-## Features
+```
+src/
+  handlers/
+    chat.ts           # POST /api/chat — main chat endpoint
+    documents.ts      # GET/POST/DELETE /api/documents — admin CRUD
+    seed.ts           # POST /api/seed — embed & upsert data.ts chunks
+    sync-github.ts    # POST /api/sync-github — sync public GitHub repos
+    sync-website.ts   # POST /api/sync-website — scrape & chunk jia-wei.site
+  chain.ts            # RAG agent (createAgent + retrieve_portfolio tool)
+  retriever.ts        # LangChain BaseRetriever → Supabase vector search
+  history.ts          # LangChain BaseChatMessageHistory → Cloudflare KV
+  utils.ts            # Shared: embeddings, Supabase helpers, LangSmith tracer
+  types.ts            # Env interface, PortfolioMatch
+  constants.ts        # Model names, TOP_K, MATCH_THRESHOLD, CORS headers
+  data.ts             # Static portfolio content chunks (seed data)
+  index.ts            # Worker entry point — routing only
+public/
+  index.html          # Admin panel UI
+  admin.js            # Admin panel logic
+wrangler.jsonc        # Worker config (KV binding, assets)
+```
 
-- 💬 Simple and responsive chat interface
-- ⚡ Server-Sent Events (SSE) for streaming responses
-- 🧠 Powered by Cloudflare Workers AI LLMs
-- 🛠️ Built with TypeScript and Cloudflare Workers
-- 📱 Mobile-friendly design
-- 🔄 Maintains chat history on the client
-- 🔎 Built-in Observability logging
-<!-- dash-content-end -->
+## Prerequisites
 
-## Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v18 or newer)
+- [Node.js](https://nodejs.org/) v18+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-- A Cloudflare account with Workers AI access
+- A Cloudflare account
+- A Supabase project with the vector store schema applied (see below)
+- A Google AI API key (for Gemini)
 
-### Installation
+## Supabase Setup
 
-1. Clone this repository:
+Run these two migrations in your Supabase project (SQL editor or via MCP):
 
-   ```bash
-   git clone https://github.com/cloudflare/templates.git
-   cd templates/llm-chat-app
-   ```
+**1. Create the vector store**
+```sql
+create extension if not exists vector;
 
-2. Install dependencies:
+create table portfolio_documents (
+  id         text primary key,
+  content    text not null,
+  embedding  vector(3072),
+  category   text,
+  title      text,
+  created_at timestamptz default now()
+);
 
-   ```bash
-   npm install
-   ```
+create or replace function match_portfolio_documents(
+  query_embedding vector,
+  match_count     int     default 5,
+  match_threshold float   default 0.5
+)
+returns table (id text, content text, category text, title text, similarity float)
+language sql stable as $$
+  select id, content, category, title,
+    1 - (embedding <=> query_embedding) as similarity
+  from portfolio_documents
+  where 1 - (embedding <=> query_embedding) > match_threshold
+  order by embedding <=> query_embedding
+  limit match_count;
+$$;
+```
 
-3. Generate Worker type definitions:
-   ```bash
-   npm run cf-typegen
-   ```
+> Note: pgvector's HNSW index supports a maximum of 2000 dimensions. Since Gemini Embedding 2 outputs 3072 dims, no index is created — a sequential scan is fine for a small portfolio dataset.
 
-### Development
+## Installation
 
-Start a local development server:
+```bash
+npm install
+```
+
+## Environment Variables
+
+All secrets are set via Wrangler and never committed to the repo.
+
+### Required secrets
+```bash
+wrangler secret put GEMINI_API_KEY        # Google AI API key
+wrangler secret put SUPABASE_URL          # e.g. https://xxxx.supabase.co
+wrangler secret put SUPABASE_SERVICE_KEY  # Supabase service role key
+wrangler secret put SEED_SECRET           # Admin panel password (any string)
+wrangler secret put GITHUB_USERNAME       # Your GitHub username
+```
+
+### Optional secrets
+```bash
+wrangler secret put GITHUB_TOKEN          # GitHub token (avoids rate limits)
+wrangler secret put PORTFOLIO_SITE_URL    # Defaults to https://jia-wei.site
+wrangler secret put LANGSMITH_API_KEY     # LangSmith tracing (optional)
+wrangler secret put LANGSMITH_PROJECT     # LangSmith project name
+```
+
+For local development, create a `.dev.vars` file (already in `.gitignore`):
+```
+GEMINI_API_KEY=...
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...
+SEED_SECRET=...
+GITHUB_USERNAME=...
+GITHUB_TOKEN=...
+LANGSMITH_API_KEY=...
+LANGSMITH_PROJECT=portfolio
+```
+
+## Development
 
 ```bash
 npm run dev
 ```
 
-This will start a local server at http://localhost:8787.
+Runs at `http://localhost:8787`. KV is simulated locally in `.wrangler/state/v3/kv/` — it does **not** write to the production KV namespace. To test against production KV:
 
-Note: Using Workers AI accesses your Cloudflare account even during local development, which will incur usage charges.
+```bash
+npx wrangler dev --remote
+```
 
-### Deployment
-
-Deploy to Cloudflare Workers:
+## Deployment
 
 ```bash
 npm run deploy
 ```
 
-### Monitor
+## Admin Panel
 
-View real-time logs associated with any deployed Worker:
+Visit the worker URL in a browser. Log in with your `SEED_SECRET` to access the content manager.
+
+| Button | What it does |
+|---|---|
+| **Add Document** | Manually add a content chunk (embeds on save) |
+| **Load Defaults** | Embeds and upserts all chunks from `src/data.ts` |
+| **Sync GitHub Repos** | Fetches your public repos via GitHub API, embeds, and upserts |
+| **Sync Website** | Scrapes `jia-wei.site`, splits by heading, embeds, and upserts |
+
+## API Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/chat` | None | Chat with the AI assistant |
+| `GET` | `/api/documents` | Bearer | List all documents |
+| `POST` | `/api/documents` | Bearer | Add a document |
+| `DELETE` | `/api/documents/:id` | Bearer | Delete a document |
+| `POST` | `/api/seed` | Bearer | Seed from `data.ts` |
+| `POST` | `/api/sync-github` | Bearer | Sync GitHub repos |
+| `POST` | `/api/sync-website` | Bearer | Sync from website |
+
+### Chat request/response
+
+```json
+// POST /api/chat
+{ "message": "What projects has Jia Wei built?", "sessionId": null }
+
+// Response
+{ "text": "Jia Wei has built...", "sessionId": "uuid-v4" }
+```
+
+Pass the returned `sessionId` on subsequent requests to maintain conversation context.
+
+## Useful Commands
 
 ```bash
-npm wrangler tail
+npm run dev          # Local dev server
+npm run deploy       # Deploy to Cloudflare
+npm run check        # Type check + dry-run build
+npx wrangler tail    # Stream live logs from the deployed worker
 ```
-
-## Project Structure
-
-```
-/
-├── public/             # Static assets
-│   ├── index.html      # Chat UI HTML
-│   └── chat.js         # Chat UI frontend script
-├── src/
-│   ├── index.ts        # Main Worker entry point
-│   └── types.ts        # TypeScript type definitions
-├── test/               # Test files
-├── wrangler.jsonc      # Cloudflare Worker configuration
-├── tsconfig.json       # TypeScript configuration
-└── README.md           # This documentation
-```
-
-## How It Works
-
-### Backend
-
-The backend is built with Cloudflare Workers and uses the Workers AI platform to generate responses. The main components are:
-
-1. **API Endpoint** (`/api/chat`): Accepts POST requests with chat messages and streams responses
-2. **Streaming**: Uses Server-Sent Events (SSE) for real-time streaming of AI responses
-3. **Workers AI Binding**: Connects to Cloudflare's AI service via the Workers AI binding
-
-### Frontend
-
-The frontend is a simple HTML/CSS/JavaScript application that:
-
-1. Presents a chat interface
-2. Sends user messages to the API
-3. Processes streaming responses in real-time
-4. Maintains chat history on the client side
-
-## Customization
-
-### Changing the Model
-
-To use a different AI model, update the `MODEL_ID` constant in `src/index.ts`. You can find available models in the [Cloudflare Workers AI documentation](https://developers.cloudflare.com/workers-ai/models/).
-
-### Using AI Gateway
-
-The template includes commented code for AI Gateway integration, which provides additional capabilities like rate limiting, caching, and analytics.
-
-To enable AI Gateway:
-
-1. [Create an AI Gateway](https://dash.cloudflare.com/?to=/:account/ai/ai-gateway) in your Cloudflare dashboard
-2. Uncomment the gateway configuration in `src/index.ts`
-3. Replace `YOUR_GATEWAY_ID` with your actual AI Gateway ID
-4. Configure other gateway options as needed:
-   - `skipCache`: Set to `true` to bypass gateway caching
-   - `cacheTtl`: Set the cache time-to-live in seconds
-
-Learn more about [AI Gateway](https://developers.cloudflare.com/ai-gateway/).
-
-### Modifying the System Prompt
-
-The default system prompt can be changed by updating the `SYSTEM_PROMPT` constant in `src/index.ts`.
-
-### Styling
-
-The UI styling is contained in the `<style>` section of `public/index.html`. You can modify the CSS variables at the top to quickly change the color scheme.
-
-## Resources
-
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Cloudflare Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
-- [Workers AI Models](https://developers.cloudflare.com/workers-ai/models/)
-# portfolio-chat-bot-worker
