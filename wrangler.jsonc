@@ -1,0 +1,26 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "portfolio-chat-bot-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./public",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV_SESSIONS",
+      "id": "cbc00ce9cf694e6dabaa57711a47f418",
+      "preview_id": "cbc00ce9cf694e6dabaa57711a47f418",
+    },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+  "upload_source_maps": true,
+}
