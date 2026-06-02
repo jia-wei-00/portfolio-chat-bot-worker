@@ -199,6 +199,34 @@ document.getElementById("seed-btn").addEventListener("click", async () => {
 	}
 });
 
+// ── Sync website ─────────────────────────────────────────────────────────────
+
+document.getElementById("website-btn").addEventListener("click", async () => {
+	if (!confirm("Scrape jia-wei.site, chunk it, and upsert all sections into the database?")) return;
+
+	const btn = document.getElementById("website-btn");
+	btn.disabled = true;
+	btn.textContent = "Scraping…";
+	setStatus("add-status", "info", "Fetching and embedding website content…");
+
+	try {
+		const res = await fetch("/api/sync-website", { method: "POST", headers: authHeaders() });
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.error || "Unknown error");
+		setStatus(
+			"add-status",
+			"success",
+			`Synced ${data.count} sections: ${(data.sections || []).join(", ")}`,
+		);
+		loadDocuments();
+	} catch (err) {
+		setStatus("add-status", "error", `Website sync failed: ${err.message}`);
+	} finally {
+		btn.disabled = false;
+		btn.textContent = "Sync Website";
+	}
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function escapeHtml(str) {

@@ -48,7 +48,7 @@ export class KVChatHistory extends BaseChatMessageHistory {
 		await this.kv.delete(this.sessionId);
 	}
 
-	private async saveMessages(messages: BaseMessage[]): Promise<void> {
+	async saveMessages(messages: BaseMessage[]): Promise<void> {
 		const stored: StoredMessage[] = messages.map((m) => ({
 			role: m._getType() === "human" ? "human" : "ai",
 			content: m.content as string,

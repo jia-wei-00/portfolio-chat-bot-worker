@@ -7,6 +7,12 @@ export interface Env {
 	GITHUB_USERNAME: string;
 	GITHUB_TOKEN: string;
 	KV_SESSIONS: KVNamespace;
+	PORTFOLIO_SITE_URL?: string;
+	// LangSmith tracing
+	LANGSMITH_TRACING?: string;
+	LANGSMITH_API_KEY?: string;
+	LANGSMITH_ENDPOINT?: string;
+	LANGSMITH_PROJECT?: string;
 }
 
 export interface ChatMessage {
