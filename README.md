@@ -180,6 +180,65 @@ Visit the worker URL in a browser. Log in with your `SEED_SECRET` to access the 
 
 Pass the returned `sessionId` on subsequent requests to maintain conversation context.
 
+## Model Selection
+
+Two models are used: one for generating answers, one for embedding content. Both choices were made deliberately for this use case.
+
+### Chat model — `gemini-3.1-flash-lite`
+
+| Model | Provider | Approx. latency | Input cost (per 1M tokens) | Reasoning quality | Decision |
+|---|---|---|---|---|---|
+| `gemini-3.1-flash-lite` | Google | ~200–350 ms | ~$0.075 | Good for factual Q&A | **Chosen** |
+| `gemini-3.1-flash` | Google | ~400–600 ms | ~$0.15 | Better multi-step reasoning | Overkill for bounded domain |
+| `gemini-3.1-pro` | Google | ~800 ms+ | ~$1.25 | Best reasoning | Overkill + expensive |
+| `claude-haiku-4-5` | Anthropic | ~200–350 ms | ~$0.80 | Excellent instruction following | 10× more expensive, different provider dependency |
+| `gemma-4-27b-it` | Google / self-hosted | ~200–500 ms | Free (self-hosted) / ~$0.10 via Vertex | Good open-source performance | Requires infra; worthwhile for privacy-sensitive deployments |
+
+**Rationale:** The portfolio domain is intentionally bounded — questions are factual ("What is Jia Wei's current role?") and the relevant context is already retrieved and injected before the LLM responds. Complex reasoning is not needed.
+
+- **`flash-lite` over `flash`/`pro`**: sufficient quality at lowest latency and cost. Flash-lite wins on price-to-performance for constrained Q&A.
+- **`flash-lite` over `claude-haiku-4-5`**: Haiku has excellent instruction-following but costs ~10× more per token with no measurable quality gain for this use case. It would be the preferred choice if the project were already on the Anthropic stack.
+- **`flash-lite` over `gemma-4-27b-it`**: Gemma 4 is the right call for privacy-first use cases (PII, sensitive content) since it can run fully on-device or in a private VPC with no data leaving your infrastructure. For a public portfolio chatbot with no sensitive data, the operational overhead isn't justified.
+
+> Prices are indicative — verify current rates at [Google AI pricing](https://ai.google.dev/pricing) and [Anthropic pricing](https://www.anthropic.com/pricing).
+
+### Embedding model — `gemini-embedding-2`
+
+| Model | Dimensions | Notes | Decision |
+|---|---|---|---|
+| `gemini-embedding-2` | 3072 | Current, high-quality semantic embeddings | **Chosen** |
+| `text-embedding-004` | 768 | Deprecated by Google | Rejected |
+
+**Rationale:** Higher dimensions capture richer semantic relationships, improving retrieval accuracy for short-form portfolio content where subtle phrasing matters. The 3072-dimension vectors also mean no HNSW index can be created (pgvector max: 2000 dims), but a sequential scan is negligible for a dataset of this size (<500 rows).
+
+---
+
+## Retrieval Eval Results
+
+Evaluated with `npm run eval` against 9 representative questions using `MATCH_THRESHOLD=0.5`, `TOP_K=5`. Full traces in LangSmith under project `portfolio`.
+
+| Question | Hit | Top similarity |
+|---|---|---|
+| What is Jia Wei's current job title and company? | ✓ | 0.751 |
+| What front-end frameworks and libraries does Jia Wei use? | ✓ | 0.784 |
+| What programming languages does Jia Wei know? | ✓ | 0.749 |
+| What is the portfolio chat bot project about? | ✓ | 0.714 |
+| Where did Jia Wei study and what did he study? | ✓ | 0.722 |
+| How can I contact Jia Wei? | ✓ | 0.849 |
+| What is Jia Wei's GitHub profile? | ✓ | 0.820 |
+| What are Jia Wei's recent projects? | ✓ | 0.736 |
+| Tell me about Jia Wei's work experience history | ✓ | 0.717 |
+| **Average** | **9 / 9 (100%)** | **0.760** |
+
+All 9 questions retrieved at least one relevant chunk above the 0.5 threshold. The lowest similarity (0.714, "portfolio chat bot") is still well above the threshold — indicating the current `MATCH_THRESHOLD=0.5` is not overly strict for this dataset.
+
+To re-run or tune retrieval parameters:
+
+```bash
+npm run eval                               # default: threshold=0.5, top_k=5
+npm run eval -- --threshold 0.4 --topk 8  # compare alternate settings in LangSmith
+```
+
 ## Useful Commands
 
 ```bash
