@@ -12,6 +12,11 @@
     "binding": "ASSETS",
     "directory": "./public",
   },
+  "vars": {
+    "LANGSMITH_TRACING": "true",
+    "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+    "SUPABASE_URL": "https://zedatttxryusgxjtgojx.supabase.co",
+  },
   "kv_namespaces": [
     {
       "binding": "KV_SESSIONS",
