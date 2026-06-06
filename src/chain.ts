@@ -2,9 +2,9 @@ import { createAgent } from "langchain";
 import { tool } from "@langchain/core/tools";
 import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { z } from "zod";
-import { Env } from "./types";
-import { PortfolioRetriever } from "./retriever";
-import { CHAT_MODEL, EMBEDDING_MODEL } from "./constants";
+import { Env } from "@/types";
+import { PortfolioRetriever } from "@/retriever";
+import { CHAT_MODEL, EMBEDDING_MODEL } from "@/constants";
 
 const SYSTEM_PROMPT =
 	"You are an AI assistant exclusively for Jia Wei's personal portfolio website. " +

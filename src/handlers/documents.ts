@@ -1,14 +1,15 @@
-import { Env } from "../types";
-import { supabaseHeaders, embedText, upsertDocuments } from "../utils";
+import { Env } from "@/types";
+import { getSupabase, embedText, upsertDocuments } from "@/utils";
 
 export async function handleListDocuments(env: Env): Promise<Response> {
-	const res = await fetch(
-		`${env.SUPABASE_URL}/rest/v1/portfolio_documents?select=id,title,category,content,created_at&order=created_at.asc`,
-		{ headers: supabaseHeaders(env) },
-	);
-	if (!res.ok) throw new Error(`Supabase list failed: ${await res.text()}`);
-	const docs = await res.json();
-	return new Response(JSON.stringify(docs), {
+	const supabase = getSupabase(env);
+	const { data, error } = await supabase
+		.from("portfolio_documents")
+		.select("id, title, category, content, created_at")
+		.order("created_at", { ascending: true });
+
+	if (error) throw new Error(`Supabase list failed: ${error.message}`);
+	return new Response(JSON.stringify(data), {
 		headers: { "content-type": "application/json" },
 	});
 }
@@ -31,7 +32,7 @@ export async function handleAddDocument(request: Request, env: Env): Promise<Res
 		const id = `${category}-${crypto.randomUUID()}`;
 		const embedding = await embedText(content, env);
 
-		await upsertDocuments([{ id, content, embedding, category, title }], env);
+		await upsertDocuments(getSupabase(env), [{ id, content, embedding, category, title }]);
 
 		return new Response(JSON.stringify({ success: true, id }), {
 			headers: { "content-type": "application/json" },
@@ -46,11 +47,10 @@ export async function handleAddDocument(request: Request, env: Env): Promise<Res
 }
 
 export async function handleDeleteDocument(id: string, env: Env): Promise<Response> {
-	const res = await fetch(
-		`${env.SUPABASE_URL}/rest/v1/portfolio_documents?id=eq.${encodeURIComponent(id)}`,
-		{ method: "DELETE", headers: supabaseHeaders(env) },
-	);
-	if (!res.ok) throw new Error(`Supabase delete failed: ${await res.text()}`);
+	const supabase = getSupabase(env);
+	const { error } = await supabase.from("portfolio_documents").delete().eq("id", id);
+
+	if (error) throw new Error(`Supabase delete failed: ${error.message}`);
 	return new Response(JSON.stringify({ success: true }), {
 		headers: { "content-type": "application/json" },
 	});

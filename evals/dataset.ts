@@ -21,7 +21,7 @@ export const dataset: EvalCase[] = [
   },
   {
     question: "What front-end frameworks and libraries does Jia Wei use?",
-    expected_keywords: ["React", "Vue", "Angular", "TypeScript"],
+    expected_keywords: ["React", "Vue", "Typescript", "TypeScript"],
     category: "skills",
   },
   {

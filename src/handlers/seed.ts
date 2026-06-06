@@ -1,6 +1,6 @@
-import { Env } from "../types";
-import { portfolioData } from "../data";
-import { makeEmbeddings, upsertDocuments } from "../utils";
+import { Env } from "@/types";
+import { portfolioData } from "@/data";
+import { makeEmbeddings, upsertDocuments, getSupabase } from "@/utils";
 
 export async function handleSeedRequest(env: Env): Promise<Response> {
 	try {
@@ -15,7 +15,7 @@ export async function handleSeedRequest(env: Env): Promise<Response> {
 			title: chunk.title,
 		}));
 
-		await upsertDocuments(rows, env);
+		await upsertDocuments(getSupabase(env), rows);
 
 		return new Response(JSON.stringify({ success: true, count: rows.length }), {
 			headers: { "content-type": "application/json" },

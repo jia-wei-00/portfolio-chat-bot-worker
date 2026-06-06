@@ -14,16 +14,3 @@ export interface Env {
 	LANGSMITH_ENDPOINT?: string;
 	LANGSMITH_PROJECT?: string;
 }
-
-export interface ChatMessage {
-	role: "system" | "user" | "assistant";
-	content: string;
-}
-
-export interface PortfolioMatch {
-	id: string;
-	content: string;
-	category: string;
-	title: string;
-	similarity: number;
-}

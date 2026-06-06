@@ -1,5 +1,5 @@
-import { Env } from "../types";
-import { makeEmbeddings, upsertDocuments } from "../utils";
+import { Env } from "@/types";
+import { makeEmbeddings, upsertDocuments, getSupabase } from "@/utils";
 
 interface GitHubRepo {
 	name: string;
@@ -59,7 +59,7 @@ export async function handleGitHubSync(env: Env): Promise<Response> {
 			title: chunk.title,
 		}));
 
-		await upsertDocuments(rows, env);
+		await upsertDocuments(getSupabase(env), rows);
 
 		return new Response(
 			JSON.stringify({ success: true, count: rows.length, repos: chunks.map((c) => c.title) }),

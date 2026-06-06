@@ -1,8 +1,18 @@
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Client } from "langsmith";
-import { Env } from "./types";
-import { EMBEDDING_MODEL } from "./constants";
+import { Env } from "@/types";
+import { Database } from "@/database.types";
+import { EMBEDDING_MODEL } from "@/constants";
+
+export type Supabase = SupabaseClient<Database>;
+
+export function getSupabase(env: Env): Supabase {
+	return createClient<Database>(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {
+		auth: { persistSession: false },
+	});
+}
 
 export function makeEmbeddings(env: Env): GoogleGenerativeAIEmbeddings {
 	return new GoogleGenerativeAIEmbeddings({
@@ -15,15 +25,8 @@ export async function embedText(text: string, env: Env): Promise<number[]> {
 	return makeEmbeddings(env).embedQuery(text);
 }
 
-export function supabaseHeaders(env: Env): Record<string, string> {
-	return {
-		"Content-Type": "application/json",
-		Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-		apikey: env.SUPABASE_SERVICE_KEY,
-	};
-}
-
 export async function upsertDocuments(
+	supabase: Supabase,
 	rows: Array<{
 		id: string;
 		content: string;
@@ -31,14 +34,9 @@ export async function upsertDocuments(
 		category: string;
 		title: string;
 	}>,
-	env: Env,
 ): Promise<void> {
-	const res = await fetch(`${env.SUPABASE_URL}/rest/v1/portfolio_documents`, {
-		method: "POST",
-		headers: { ...supabaseHeaders(env), Prefer: "resolution=merge-duplicates" },
-		body: JSON.stringify(rows),
-	});
-	if (!res.ok) throw new Error(`Supabase upsert failed: ${await res.text()}`);
+	const { error } = await supabase.from("portfolio_documents").upsert(rows);
+	if (error) throw new Error(`Supabase upsert failed: ${error.message}`);
 }
 
 export function makeTracer(env: Env): LangChainTracer | undefined {

@@ -1,9 +1,9 @@
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { Env } from "../types";
-import { KVChatHistory } from "../history";
-import { createRAGAgent } from "../chain";
-import { makeTracer } from "../utils";
-import { CORS_HEADERS } from "../constants";
+import { Env } from "@/types";
+import { KVChatHistory } from "@/history";
+import { createRAGAgent } from "@/chain";
+import { makeTracer } from "@/utils";
+import { CORS_HEADERS } from "@/constants";
 
 export async function handleChatRequest(request: Request, env: Env): Promise<Response> {
 	try {

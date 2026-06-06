@@ -1,5 +1,5 @@
-import { Env } from "../types";
-import { makeEmbeddings, upsertDocuments } from "../utils";
+import { Env } from "@/types";
+import { makeEmbeddings, upsertDocuments, getSupabase } from "@/utils";
 
 function htmlToTextChunks(
 	html: string,
@@ -80,7 +80,7 @@ export async function handleWebsiteSync(env: Env): Promise<Response> {
 			title: chunk.title,
 		}));
 
-		await upsertDocuments(rows, env);
+		await upsertDocuments(getSupabase(env), rows);
 
 		return new Response(
 			JSON.stringify({ success: true, count: rows.length, sections: chunks.map((c) => c.title) }),
