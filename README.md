@@ -5,9 +5,87 @@ A Cloudflare Worker that powers the AI chat assistant on [jia-wei.site](https://
 ## How It Works
 
 1. **Seeding** — portfolio content (about, skills, projects, experience, education) is embedded with Gemini Embedding 2 and stored as 3072-dimensional vectors in a Supabase pgvector table.
-2. **Chat** — each user message is embedded, a cosine similarity search retrieves the most relevant content chunks from Supabase, and Gemini generates a grounded answer.
+2. **Chat** — incoming messages run through a ReAct agent that decides when to retrieve, calls the `retrieve_portfolio` tool against Supabase, then generates a grounded answer.
 3. **History** — conversation context is persisted in Cloudflare KV per session (1-hour TTL) so the AI remembers earlier turns in the same chat.
-4. **Agent** — built with LangChain's `createAgent` (LangGraph ReAct agent). The LLM decides when to call the `retrieve_portfolio` tool rather than always retrieving.
+
+## Agent Architecture — ReAct
+
+This project uses the **ReAct (Reasoning + Acting)** pattern via LangChain v1's `createAgent`, which is backed by LangGraph's `ReactAgent` under the hood. Instead of always retrieving on every message, the LLM decides whether and what to search for, observes the result, and then responds.
+
+The loop for a single user turn:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  User: "What projects has Jia Wei built?"                       │
+└────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│  REASON  Gemini reads conversation history + new message       │
+│          → "I need portfolio data. Call retrieve_portfolio."   │
+└────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│  ACT     retrieve_portfolio({ query: "projects Jia Wei" })     │
+│          → embed query (Gemini Embedding 2, 3072 dims)         │
+│          → Supabase RPC: match_portfolio_documents             │
+│          → returns top-5 chunks above threshold 0.5            │
+└────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│  OBSERVE Retrieved chunks injected into the next prompt        │
+└────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│  REASON  Gemini reads original question + retrieved context    │
+│          → "I have enough info. Write the final answer."       │
+└────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│  RESPOND  "Jia Wei has built portfolio-chat-bot-worker..."     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+The loop is multi-step capable — if the first retrieval doesn't surface enough information, the agent can issue a refined second query before responding.
+
+### Why ReAct over a fixed RAG chain?
+
+Earlier iterations of this project used an LCEL chain that **always** ran retrieval on every message. That approach has two problems:
+
+| Question type | Fixed RAG chain | ReAct agent |
+|---|---|---|
+| "Hi" / "Thanks" | Pointlessly retrieves chunks, wastes embedding API call | LLM responds directly, no retrieval |
+| "What is the capital of France?" | Retrieves irrelevant chunks, may confuse the response | LLM declines (per system prompt), no retrieval |
+| "Tell me about Jia Wei's projects" | Single retrieval, single answer | Single retrieval, single answer (same) |
+| "Compare his React experience to his Vue experience" | Single ambiguous retrieval | Can issue two focused queries if needed |
+
+Net effect: lower embedding cost, no irrelevant context polluting answers, and the system prompt's "only answer questions about Jia Wei" rule is enforced before retrieval rather than after.
+
+### The tool definition
+
+The `retrieve_portfolio` tool is declared with a Zod schema and `responseFormat: "content_and_artifact"` (see `src/chain.ts`):
+
+```typescript
+tool(
+  async ({ query }) => {
+    const docs = await retriever.invoke(query);
+    const serialized = docs.map(d => `[${d.metadata.title}]\n${d.pageContent}`).join("\n\n");
+    return [serialized, docs];  // [content shown to LLM, raw artifact for tracing]
+  },
+  {
+    name: "retrieve_portfolio",
+    description: "Search the portfolio knowledge base for information about...",
+    schema: z.object({ query: z.string() }),
+    responseFormat: "content_and_artifact",
+  },
+)
+```
+
+`content_and_artifact` returns a tuple — the **content** (formatted string) goes back to the LLM as the tool result; the **artifact** (raw `Document[]`) is preserved on the message for LangSmith traces and downstream inspection.
 
 ## Tech Stack
 
@@ -17,7 +95,7 @@ A Cloudflare Worker that powers the AI chat assistant on [jia-wei.site](https://
 | LLM | Gemini (`gemini-3.1-flash-lite`) via `@langchain/google-genai` |
 | Embeddings | Gemini Embedding 2 (3072 dims) |
 | Vector store | Supabase pgvector |
-| Agent framework | LangChain v1 + LangGraph (`createAgent`) |
+| Agent framework | LangChain v1 + LangGraph `ReactAgent` (via `createAgent`) |
 | Session history | Cloudflare KV |
 | Tracing | LangSmith (optional) |
 
