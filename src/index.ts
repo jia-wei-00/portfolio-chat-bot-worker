@@ -7,8 +7,6 @@ import {
   handleDeleteDocument,
 } from "@/handlers/documents";
 import { handleSeedRequest } from "@/handlers/seed";
-import { handleGitHubSync } from "@/handlers/sync-github";
-import { handleWebsiteSync } from "@/handlers/sync-website";
 
 export default {
   async fetch(
@@ -27,7 +25,6 @@ export default {
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
-      console.log("came");
       return handleChatRequest(request, env);
     }
 
@@ -55,14 +52,6 @@ export default {
 
     if (url.pathname === "/api/seed" && request.method === "POST") {
       return handleSeedRequest(env);
-    }
-
-    if (url.pathname === "/api/sync-github" && request.method === "POST") {
-      return handleGitHubSync(env);
-    }
-
-    if (url.pathname === "/api/sync-website" && request.method === "POST") {
-      return handleWebsiteSync(env);
     }
 
     return new Response("Not found", { status: 404 });

@@ -155,28 +155,6 @@ async function deleteDocument(id, btn) {
 
 // ── Seed defaults ─────────────────────────────────────────────────────────────
 
-document.getElementById("github-btn").addEventListener("click", async () => {
-	if (!confirm("Fetch all public GitHub repos and upsert them into the database?")) return;
-
-	const btn = document.getElementById("github-btn");
-	btn.disabled = true;
-	btn.textContent = "Syncing…";
-	setStatus("add-status", "info", "Fetching repos from GitHub and embedding…");
-
-	try {
-		const res = await fetch("/api/sync-github", { method: "POST", headers: authHeaders() });
-		const data = await res.json();
-		if (!res.ok) throw new Error(data.error || "Unknown error");
-		setStatus("add-status", "success", `Synced ${data.count} repos: ${(data.repos || []).join(", ")}`);
-		loadDocuments();
-	} catch (err) {
-		setStatus("add-status", "error", `GitHub sync failed: ${err.message}`);
-	} finally {
-		btn.disabled = false;
-		btn.textContent = "Sync GitHub Repos";
-	}
-});
-
 document.getElementById("seed-btn").addEventListener("click", async () => {
 	if (!confirm("This will upsert all default chunks from data.ts into the database. Continue?")) return;
 
@@ -196,34 +174,6 @@ document.getElementById("seed-btn").addEventListener("click", async () => {
 	} finally {
 		btn.disabled = false;
 		btn.textContent = "Load Defaults from data.ts";
-	}
-});
-
-// ── Sync website ─────────────────────────────────────────────────────────────
-
-document.getElementById("website-btn").addEventListener("click", async () => {
-	if (!confirm("Scrape jia-wei.site, chunk it, and upsert all sections into the database?")) return;
-
-	const btn = document.getElementById("website-btn");
-	btn.disabled = true;
-	btn.textContent = "Scraping…";
-	setStatus("add-status", "info", "Fetching and embedding website content…");
-
-	try {
-		const res = await fetch("/api/sync-website", { method: "POST", headers: authHeaders() });
-		const data = await res.json();
-		if (!res.ok) throw new Error(data.error || "Unknown error");
-		setStatus(
-			"add-status",
-			"success",
-			`Synced ${data.count} sections: ${(data.sections || []).join(", ")}`,
-		);
-		loadDocuments();
-	} catch (err) {
-		setStatus("add-status", "error", `Website sync failed: ${err.message}`);
-	} finally {
-		btn.disabled = false;
-		btn.textContent = "Sync Website";
 	}
 });
 

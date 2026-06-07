@@ -29,13 +29,12 @@ src/
     chat.ts           # POST /api/chat — main chat endpoint
     documents.ts      # GET/POST/DELETE /api/documents — admin CRUD
     seed.ts           # POST /api/seed — embed & upsert data.ts chunks
-    sync-github.ts    # POST /api/sync-github — sync public GitHub repos
-    sync-website.ts   # POST /api/sync-website — scrape & chunk jia-wei.site
   chain.ts            # RAG agent (createAgent + retrieve_portfolio tool)
   retriever.ts        # LangChain BaseRetriever → Supabase vector search
   history.ts          # LangChain BaseChatMessageHistory → Cloudflare KV
-  utils.ts            # Shared: embeddings, Supabase helpers, LangSmith tracer
-  types.ts            # Env interface, PortfolioMatch
+  utils.ts            # Shared: Supabase client, embeddings, LangSmith tracer
+  types.ts            # Env interface
+  database.types.ts   # Supabase database schema types
   constants.ts        # Model names, TOP_K, MATCH_THRESHOLD, CORS headers
   data.ts             # Static portfolio content chunks (seed data)
   index.ts            # Worker entry point — routing only
@@ -104,16 +103,15 @@ wrangler secret put GEMINI_API_KEY        # Google AI API key
 wrangler secret put SUPABASE_URL          # e.g. https://xxxx.supabase.co
 wrangler secret put SUPABASE_SERVICE_KEY  # Supabase service role key
 wrangler secret put SEED_SECRET           # Admin panel password (any string)
-wrangler secret put GITHUB_USERNAME       # Your GitHub username
 ```
 
 ### Optional secrets
 ```bash
-wrangler secret put GITHUB_TOKEN          # GitHub token (avoids rate limits)
-wrangler secret put PORTFOLIO_SITE_URL    # Defaults to https://jia-wei.site
 wrangler secret put LANGSMITH_API_KEY     # LangSmith tracing (optional)
 wrangler secret put LANGSMITH_PROJECT     # LangSmith project name
 ```
+
+Non-sensitive config (`LANGSMITH_TRACING`, `LANGSMITH_ENDPOINT`) lives in the `vars` block of `wrangler.jsonc`.
 
 For local development, create a `.dev.vars` file (already in `.gitignore`):
 ```
@@ -121,8 +119,6 @@ GEMINI_API_KEY=...
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
 SEED_SECRET=...
-GITHUB_USERNAME=...
-GITHUB_TOKEN=...
 LANGSMITH_API_KEY=...
 LANGSMITH_PROJECT=portfolio
 ```
@@ -153,8 +149,6 @@ Visit the worker URL in a browser. Log in with your `SEED_SECRET` to access the 
 |---|---|
 | **Add Document** | Manually add a content chunk (embeds on save) |
 | **Load Defaults** | Embeds and upserts all chunks from `src/data.ts` |
-| **Sync GitHub Repos** | Fetches your public repos via GitHub API, embeds, and upserts |
-| **Sync Website** | Scrapes `jia-wei.site`, splits by heading, embeds, and upserts |
 
 ## API Endpoints
 
@@ -165,8 +159,6 @@ Visit the worker URL in a browser. Log in with your `SEED_SECRET` to access the 
 | `POST` | `/api/documents` | Bearer | Add a document |
 | `DELETE` | `/api/documents/:id` | Bearer | Delete a document |
 | `POST` | `/api/seed` | Bearer | Seed from `data.ts` |
-| `POST` | `/api/sync-github` | Bearer | Sync GitHub repos |
-| `POST` | `/api/sync-website` | Bearer | Sync from website |
 
 ### Chat request/response
 

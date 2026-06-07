@@ -4,10 +4,7 @@ export interface Env {
 	SUPABASE_SERVICE_KEY: string;
 	GEMINI_API_KEY: string;
 	SEED_SECRET: string;
-	GITHUB_USERNAME: string;
-	GITHUB_TOKEN: string;
 	KV_SESSIONS: KVNamespace;
-	PORTFOLIO_SITE_URL?: string;
 	// LangSmith tracing
 	LANGSMITH_TRACING?: string;
 	LANGSMITH_API_KEY?: string;
